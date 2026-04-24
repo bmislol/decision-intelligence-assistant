@@ -38,7 +38,7 @@ async def trigger_evaluate(background_tasks: BackgroundTasks):
 app.include_router(search.router, prefix="/api")
 app.include_router(keyword.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
-app.include_router(admin, prefix="/api")
+app.include_router(admin.router, prefix="/api")
 
 @app.get("/")
 def root():

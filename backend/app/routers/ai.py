@@ -106,7 +106,7 @@ async def predict_all(request: Request, data: AskRequest):
             total_latency_ms=round((time.time() - start) * 1000, 2)
         )
 
-        logger.log_interaction(response.model_dump())
+        logger.log_interaction("MASTER_API", data.question, response.model_dump())
 
         return response
     

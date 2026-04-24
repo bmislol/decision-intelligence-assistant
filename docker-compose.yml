@@ -1,0 +1,28 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/logs:/app/logs
+      - ./backend/data:/app/data
+      - ./backend/models:/app/models
+    env_file:
+      - ./backend/.env
+    networks:
+      - decision-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
+    networks:
+      - decision-network
+    depends_on:
+      - backend
+
+networks:
+  decision-network:
+    driver: bridge

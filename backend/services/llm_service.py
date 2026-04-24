@@ -58,22 +58,26 @@ class LLMService:
         """
         context_str = "\n".join([f"- {s.text}" for s in sources])
         
-        # RAG Version
-        rag_ans = self.client.models.generate_content(
-            model=settings.LLM_MODEL,
-            contents=f"Using this context: {context_str}\n\nQuestion: {query}"
-        )
-        
-        # Non-RAG Version
-        non_rag_ans = self.client.models.generate_content(
-            model=settings.LLM_MODEL,
-            contents=f"Answer this support ticket based on general knowledge: {query}"
-        )
-        
-        return {
-            "rag_answer": rag_ans.text,
-            "non_rag_answer": non_rag_ans.text
-        }
+        try:
+            # RAG Version
+            rag_ans = self.client.models.generate_content(
+                model=settings.LLM_MODEL,
+                contents=f"Using this context: {context_str}\n\nQuestion: {query}"
+            )
+            
+            # Non-RAG Version
+            non_rag_ans = self.client.models.generate_content(
+                model=settings.LLM_MODEL,
+                contents=f"Answer this support ticket based on general knowledge: {query}"
+            )
+            
+            return {
+                "rag_answer": rag_ans.text,
+                "non_rag_answer": non_rag_ans.text
+            }
+        except Exception as e:
+            logger.error(f"LLM comparative Error: {e}")
+            return {"rag_answer": "RAG limit exceeded.", "non_rag_answer": "Non-RAG limit exceeded."}
     
     # Add this method to the LLMService class in backend/services/llm_service.py
     def predict_zero_shot(self, query: str):
@@ -81,24 +85,29 @@ class LLMService:
         prompt = f"Is this support ticket High Priority (2), Medium Priority (1), or Low Priority (0)? Ticket: {query}"
         
         start_time = time.time()
-        response = self.client.models.generate_content(
-            model=settings.LLM_MODEL,
-            config={
-                'system_instruction': "You are a support classifier. Decide the priority based ONLY on the text provided.",
-                'response_mime_type': 'application/json',
-                'response_schema': PriorityPrediction,
-                'temperature': 0.1
-            },
-            contents=prompt
-        )
-        latency = (time.time() - start_time) * 1000
-        prediction: PriorityPrediction = response.parsed
-        
-        return {
-            "priority": prediction.priority,
-            "reasoning": prediction.reasoning,
-            "latency_ms": round(latency, 2),
-            "cost_usd": 0.00001 # Approx cost for 1.5-flash
-        }
+
+        try:
+            response = self.client.models.generate_content(
+                model=settings.LLM_MODEL,
+                config={
+                    'system_instruction': "You are a support classifier. Decide the priority based ONLY on the text provided.",
+                    'response_mime_type': 'application/json',
+                    'response_schema': PriorityPrediction,
+                    'temperature': 0.1
+                },
+                contents=prompt
+            )
+            latency = (time.time() - start_time) * 1000
+            prediction: PriorityPrediction = response.parsed
+            
+            return {
+                "priority": prediction.priority,
+                "reasoning": prediction.reasoning,
+                "latency_ms": round(latency, 2),
+                "cost_usd": 0.00001 # Approx cost for 1.5-flash
+            }
+        except Exception as e:
+            logger.error(f"LLM zero-shot Error: {e}")
+            return {"priority": 1, "reasoning": "Quota reached.", "latency_ms": 0.0, "cost_usd": 0.0}
 
 llm_service = LLMService()
