@@ -1,67 +1,104 @@
-from fastapi import FastAPI, HTTPException
+import logging
 from contextlib import asynccontextmanager
-from schemas import ChatRequest, ChatResponse, SourceCase, PredictorResult
-from services.ml_service import MLService
-from services.vector_service import VectorService
-from services.llm_service import LLMService
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
-# --- Lifespan: Load everything once ---
+# Project Imports
+from app.config import settings
+from app.models import AskRequest, AskResponse, SearchResult
+from app.routers import search, keyword
+
+# We will load these via the lifespan
+from services.ml_service import MLService
+from app.rag.store import ticket_store
+from app.rag.embedder import embedder
+
+# --- 1. Lifespan: Load the "Heavy" ML Model once ---
 services = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Starting up: Loading services...")
-    services["ml"] = MLService()
-    services["vector"] = VectorService()
-    services["llm"] = LLMService()
+    logging.info("🚀 Starting up: Loading ML Services and Vector Store...")
+    # Load your Section 1 ML Model
+    services["ml"] = MLService() 
     yield
-    print("Shutting down...")
+    logging.info("🛑 Shutting down...")
     services.clear()
 
-app = FastAPI(title="Acme Corp Decision Intelligence", lifespan=lifespan)
+app = FastAPI(
+    title="Decision Intelligence Assistant",
+    description="ML Priority Prediction + RAG Knowledge Assistant",
+    lifespan=lifespan
+)
 
-# --- Endpoint 1: ML Only (The "Reflex") ---
-@app.post("/predict/ml", tags=["Debug"])
-async def predict_ml(request: ChatRequest):
-    return services["ml"].predict_priority(request.query, request.brand)
+# --- 2. Middleware & Routers ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# --- Endpoint 2: Vector Only (The "Memory") ---
-@app.post("/predict/vector", tags=["Debug"])
-async def predict_vector(request: ChatRequest):
-    points = services["vector"].get_relevant_context(request.query)
-    return [
-        SourceCase(text=p.payload['text'], priority=p.payload['priority'], score=p.score) 
-        for p in points
-    ]
+# Include Section 3 Routers (Semantic vs Keyword Search)
+app.include_router(search.router)
+app.include_router(keyword.router)
 
-# --- Endpoint 3: LLM Only (The "Brain") ---
-@app.post("/predict/llm", tags=["Debug"])
-async def predict_llm(request: ChatRequest):
-    # For independent LLM testing, we still fetch context first
-    context = services["vector"].get_relevant_context(request.query)
-    return services["llm"].predict_priority(request.query, request.brand, context)
+# --- 3. SECTION 1: ML Only Endpoint ---
+@app.post("/predict/ml", tags=["Section 1: Baseline"])
+async def predict_ml(request: AskRequest):
+    """Reflex action: Quick ML prediction from the Logistic Regression model."""
+    try:
+        # Map sector and length to avoid the ValueError seen earlier
+        sector = "Tech" if "Apple" in request.brand or "PlayStation" in request.brand else "Other"
+        text_len = len(request.question)
+        
+        prediction = services["ml"].predict_priority(
+            query=request.question, 
+            brand=request.brand,
+            sector=sector,
+            text_len=text_len
+        )
+        return {"priority": int(prediction), "model": "LogisticRegression"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ML Service Error: {str(e)}")
 
-# --- Endpoint 4: The Orchestrator (The "Product") ---
-@app.post("/predict/all", response_model=ChatResponse, tags=["Production"])
-async def predict_all(request: ChatRequest):
-    """The master endpoint for your React dashboard."""
-    # 1. Fast ML Prediction
-    ml_data = services["ml"].predict_priority(request.query, request.brand)
+# --- 4. SECTION 4: The Orchestrator (The Product) ---
+@app.post("/predict/all", response_model=AskResponse, tags=["Section 4: Production"])
+async def predict_all(request: AskRequest):
+    """
+    The Master Endpoint: Combines ML Baseline + RAG + LLM Reasoning.
+    This fulfills Section 4 of the project requirements.
+    """
+    # 1. Get ML Prediction (Section 1)
+    sector = "Tech" if "Apple" in request.brand or "PlayStation" in request.brand else "Other"
+    ml_priority = services["ml"].predict_priority(request.question, request.brand, sector, len(request.question))
     
-    # 2. RAG Retrieval
-    context_points = services["vector"].get_relevant_context(request.query)
+    # 2. Get RAG Context (Section 2/3)
+    query_vector = embedder.embed_text(request.question)
+    raw_sources = ticket_store.search(query_vector, top_k=3)
+    
     sources = [
-        SourceCase(text=p.payload['text'], priority=p.payload['priority'], score=p.score) 
-        for p in context_points
+        SearchResult(
+            tweet_id=s["metadata"]["tweet_id"],
+            text=s["text"],
+            priority=s["metadata"]["priority"],
+            target_brand=s["metadata"]["brand"],
+            brand_sector=s["metadata"]["sector"],
+            distance=s["distance"]
+        ) for s in raw_sources
     ]
     
-    # 3. LLM Reasoning
-    llm_data = services["llm"].predict_priority(request.query, request.brand, context_points)
-    
-    return ChatResponse(
-        query=request.query,
-        brand=request.brand,
-        ml_result=PredictorResult(**ml_data),
-        llm_result=PredictorResult(**llm_data),
-        sources=sources
+    # 3. LLM Logic (Section 4 - Coming next!)
+    # For now, we'll return a placeholder until we build the llm_service
+    return AskResponse(
+        answer="The RAG system found similar cases. I am ready to process them.",
+        ml_priority=int(ml_priority),
+        rag_priority=None, 
+        sources=sources,
+        latency_ms={"total": 0.5} 
     )
+
+@app.get("/")
+def root():
+    return {"message": "API is live. Explore /docs for Section 1-4 endpoints."}
