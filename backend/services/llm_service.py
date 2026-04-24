@@ -1,6 +1,7 @@
 import json
 import time
 from google import genai
+from google.genai import errors
 from app.config import settings
 
 class LLMService:
@@ -10,18 +11,24 @@ class LLMService:
         # 2026 pricing for gemini-1.5-flash: ~$0.075 / 1M tokens
         self.cost_per_token = 0.000000075 
 
-    def _call_gemini(self, prompt: str):
-        start_time = time.time()
-        response = self.client.models.generate_content(
-            model=self.model_id,
-            contents=prompt
-        )
-        latency = (time.time() - start_time) * 1000
-        # Estimate tokens (approx 4 chars per token)
-        tokens = len(prompt + response.text) / 4
-        cost = tokens * self.cost_per_token
-        
-        return response.text, round(latency, 2), round(cost, 6)
+    def _call_gemini(self, prompt: str, retries=2):
+        """Helper with basic retry logic for 503 errors."""
+        for attempt in range(retries + 1):
+            try:
+                start_time = time.time()
+                response = self.client.models.generate_content(
+                    model=self.model_id,
+                    contents=prompt
+                )
+                latency = (time.time() - start_time) * 1000
+                tokens = len(prompt + response.text) / 4
+                return response.text, round(latency, 2), round(tokens * self.cost_per_token, 6)
+            except Exception as e:
+                if attempt < retries:
+                    time.sleep(1) # Wait 1s before retrying
+                    continue
+                # Fallback response if Gemini is totally down
+                return "LLM Service is currently overloaded. Please try again in a moment.", 0.0, 0.0
 
     def get_comparative_predictions(self, query: str, context_results: list):
         """
