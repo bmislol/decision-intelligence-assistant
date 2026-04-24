@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     def CHROMA_DB_PATH(self) -> str:
         # data/ is in the project root, not inside backend/
         return str(self.ROOT_DIR / "data" / "chroma_db")
+    
+    @property
+    def PROCESSED_DATA_PATH(self) -> str:
+        """Points to the directory where processed_tickets.joblib lives."""
+        return str(self.ROOT_DIR / "data")
 
     model_config = SettingsConfigDict(
         env_file=str(BACKEND_DIR / ".env"),
