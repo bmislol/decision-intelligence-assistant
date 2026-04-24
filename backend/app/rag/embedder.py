@@ -5,6 +5,9 @@
 # This runs 100% locally on Ubuntu with CUDA support.
 # ============================================================
 
+import os
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
 import torch
 from sentence_transformers import SentenceTransformer
 from typing import List

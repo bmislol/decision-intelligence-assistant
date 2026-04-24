@@ -1,39 +1,40 @@
-from app.llm import call_llm
-from app.prompts.grounded_answer import GROUNDED_SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
+import json
+import time
+from google import genai
+from app.config import settings
 
 class LLMService:
-    def predict_priority(self, query: str, brand: str, context_results: list) -> dict:
-        """
-        Takes the RAG results and asks Gemini to make a final decision.
-        Fulfills Section 4: The LLM Predictor.
-        """
-        # 1. Format the historical context for the prompt
+    def __init__(self):
+        # Initializing the latest Google GenAI SDK (v1.73+)
+        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self.model_id = settings.LLM_MODEL
+
+    def predict_priority(self, query: str, brand: str, context_results: list):
+        """Handles both raw dicts from the API and SearchResult objects from scripts."""
+        start_time = time.time()
+        
         context_str = ""
         for i, res in enumerate(context_results):
-            # We use the text and metadata we stored in ChromaDB
-            context_str += f"\n--- Historical Case {i+1} ---\n{res.text}\n"
+            # Universal access for dicts (API) or objects (evaluate.py)
+            if isinstance(res, dict):
+                text = res.get('text', 'No text')
+                priority = res.get('metadata', {}).get('priority', 'N/A')
+            else:
+                text = getattr(res, 'text', 'No text')
+                priority = getattr(res, 'priority', 'N/A')
+            context_str += f"\n--- Case {i+1} ---\nText: {text}\nPriority: {priority}\n"
 
-        # 2. Build the user prompt
-        user_prompt = USER_PROMPT_TEMPLATE.format(
-            query=query,
-            brand=brand,
-            context=context_str
+        prompt = f"Context:\n{context_str}\n\nUser: {query}\n\nReturn JSON: {{\"priority\": 0, \"answer\": \"reason\"}}"
+
+        response = self.client.models.generate_content(
+            model=self.model_id,
+            contents=prompt
         )
-
-        # 3. Call Gemini
-        raw_response = call_llm(GROUNDED_SYSTEM_PROMPT, user_prompt)
-
-        # 4. Return the reasoning and a predicted priority 
-        # (We'll parse the priority from the text for now)
-        predicted_priority = 1
-        if "priority: 2" in raw_response.lower() or "high priority" in raw_response.lower():
-            predicted_priority = 2
-        elif "priority: 0" in raw_response.lower() or "low priority" in raw_response.lower():
-            predicted_priority = 0
-
-        return {
-            "answer": raw_response,
-            "priority": predicted_priority
-        }
+        
+        try:
+            result = json.loads(response.text.strip().strip('```json').strip('```'))
+            return {"priority": int(result["priority"]), "answer": result["answer"]}
+        except:
+            return {"priority": 1 if "high" in response.text.lower() else 0, "answer": response.text[:100]}
 
 llm_service = LLMService()

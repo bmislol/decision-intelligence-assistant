@@ -1,26 +1,37 @@
-import os
-from pydantic_settings import BaseSettings
+# backend/app/config.py
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 from pathlib import Path
 
 class Settings(BaseSettings):
-    # App Config
     APP_NAME: str = "Decision Intelligence Assistant"
     
-    # Paths (Anchored to your project root)
-    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
-    CHROMA_DB_PATH: str = str(BASE_DIR / "data" / "chroma_db")
-    ML_MODEL_PATH: str = str(BASE_DIR / "backend" / "models" / "priority_model.joblib")
-    PROCESSED_DATA_PATH: str = str(BASE_DIR / "data" / "processed_tickets.joblib")
+    # Path logic
+    BACKEND_DIR: Path = Path(__file__).resolve().parent.parent
+    ROOT_DIR: Path = BACKEND_DIR.parent
     
-    # Gemini Config
+    # Map .env keys to these variables
+    ml_model_path_raw: str = Field(default="models/priority_model.joblib", alias="ML_MODEL_PATH")
+    chroma_db_path_raw: str = Field(default="data/chroma_db", alias="CHROMA_DB_PATH")
+    
     GEMINI_API_KEY: str = ""
-    # Updated: Use 'gemini-1.5-flash' as it's more stable for testing
-    LLM_MODEL: str = "gemini-1.5-flash" 
-    EMBEDDING_MODEL: str = "text-embedding-004"
+    # FIX: Use the stable 2026 production ID to avoid 404s
+    LLM_MODEL: str = "gemini-2.5-flash" 
 
-    class Config:
-        # Use the absolute path so it works from any directory
-        env_file = str(Path(__file__).resolve().parent.parent / ".env")
-        extra = "ignore"
+    @property
+    def ML_MODEL_PATH(self) -> str:
+        path = Path(self.ml_model_path_raw)
+        return str(self.BACKEND_DIR / path) if not path.is_absolute() else str(path)
+
+    @property
+    def CHROMA_DB_PATH(self) -> str:
+        # data/ is in the project root, not inside backend/
+        return str(self.ROOT_DIR / "data" / "chroma_db")
+
+    model_config = SettingsConfigDict(
+        env_file=str(BACKEND_DIR / ".env"),
+        extra="ignore",
+        populate_by_name=True
+    )
 
 settings = Settings()
