@@ -1,3 +1,4 @@
+import os
 from pydantic_settings import BaseSettings
 from pathlib import Path
 
@@ -13,14 +14,13 @@ class Settings(BaseSettings):
     
     # Gemini Config
     GEMINI_API_KEY: str = ""
-    # 'text-embedding-004' is the current gold standard for Gemini embeddings
-    EMBEDDING_MODEL: str = "models/text-embedding-004" 
-    # 'gemini-1.5-flash' is great for speed/cost, 'pro' is better for logic
-    LLM_MODEL: str = "gemini-1.5-pro" 
+    # Updated: Use 'gemini-1.5-flash' as it's more stable for testing
+    LLM_MODEL: str = "gemini-1.5-flash" 
+    EMBEDDING_MODEL: str = "text-embedding-004"
 
     class Config:
-        # This tells Pydantic to look for your .env file
-        env_file = ".env"
+        # Use the absolute path so it works from any directory
+        env_file = str(Path(__file__).resolve().parent.parent / ".env")
         extra = "ignore"
 
 settings = Settings()

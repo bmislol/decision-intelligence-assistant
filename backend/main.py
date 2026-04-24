@@ -3,6 +3,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+import time
+from services.llm_service import llm_service
+
 # Project Imports
 from app.config import settings
 from app.models import AskRequest, AskResponse, SearchResult
@@ -68,13 +71,21 @@ async def predict_ml(request: AskRequest):
 async def predict_all(request: AskRequest):
     """
     The Master Endpoint: Combines ML Baseline + RAG + LLM Reasoning.
-    This fulfills Section 4 of the project requirements.
+    Fulfills Section 4 of the project requirements.
     """
-    # 1. Get ML Prediction (Section 1)
-    sector = "Tech" if "Apple" in request.brand or "PlayStation" in request.brand else "Other"
-    ml_priority = services["ml"].predict_priority(request.question, request.brand, sector, len(request.question))
+    start_time = time.time()
+
+    # 1. Get ML Prediction (Section 1: The "Reflex")
+    # Engineering features on the fly to avoid that ValueError
+    sector = "Tech" if any(b in request.brand for b in ["Apple", "PlayStation", "Amazon"]) else "Other"
+    text_len = len(request.question)
     
-    # 2. Get RAG Context (Section 2/3)
+    ml_start = time.time()
+    ml_priority = services["ml"].predict_priority(request.question, request.brand, sector, text_len)
+    ml_latency = (time.time() - ml_start) * 1000
+
+    # 2. Get RAG Context (Section 2/3: The "Memory")
+    rag_start = time.time()
     query_vector = embedder.embed_text(request.question)
     raw_sources = ticket_store.search(query_vector, top_k=3)
     
@@ -88,15 +99,26 @@ async def predict_all(request: AskRequest):
             distance=s["distance"]
         ) for s in raw_sources
     ]
-    
-    # 3. LLM Logic (Section 4 - Coming next!)
-    # For now, we'll return a placeholder until we build the llm_service
+    rag_latency = (time.time() - rag_start) * 1000
+
+    # 3. LLM Reasoning (Section 4: The "Brain")
+    llm_start = time.time()
+    llm_result = llm_service.predict_priority(request.question, request.brand, sources)
+    llm_latency = (time.time() - llm_start) * 1000
+
+    total_latency = (time.time() - start_time) * 1000
+
     return AskResponse(
-        answer="The RAG system found similar cases. I am ready to process them.",
+        answer=llm_result["answer"],
         ml_priority=int(ml_priority),
-        rag_priority=None, 
+        rag_priority=llm_result["priority"], 
         sources=sources,
-        latency_ms={"total": 0.5} 
+        latency_ms={
+            "ml": round(ml_latency, 2),
+            "rag": round(rag_latency, 2),
+            "llm": round(llm_latency, 2),
+            "total": round(total_latency, 2)
+        }
     )
 
 @app.get("/")
