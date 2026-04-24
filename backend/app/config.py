@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     
     GEMINI_API_KEY: str = ""
     # FIX: Use the stable 2026 production ID to avoid 404s
-    LLM_MODEL: str = "gemini-2.5-flash" 
+    LLM_MODEL: str = "gemini-1.5-flash" 
 
     @property
     def ML_MODEL_PATH(self) -> str:

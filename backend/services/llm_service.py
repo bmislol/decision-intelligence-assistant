@@ -1,66 +1,104 @@
-import json
 import time
-from google import genai
-from google.genai import errors
+import logging
 from app.config import settings
+from app.llm import _get_gemini_client
+from app.models import PriorityPrediction, SearchResult
+from app.prompts.grounded_answer import GROUNDED_SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
+
+logger = logging.getLogger(__name__)
 
 class LLMService:
     def __init__(self):
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.model_id = settings.LLM_MODEL
-        # 2026 pricing for gemini-1.5-flash: ~$0.075 / 1M tokens
-        self.cost_per_token = 0.000000075 
+        self.client = _get_gemini_client()
 
-    def _call_gemini(self, prompt: str, retries=2):
-        """Helper with basic retry logic for 503 errors."""
-        for attempt in range(retries + 1):
-            try:
-                start_time = time.time()
-                response = self.client.models.generate_content(
-                    model=self.model_id,
-                    contents=prompt
-                )
-                latency = (time.time() - start_time) * 1000
-                tokens = len(prompt + response.text) / 4
-                return response.text, round(latency, 2), round(tokens * self.cost_per_token, 6)
-            except Exception as e:
-                if attempt < retries:
-                    time.sleep(1) # Wait 1s before retrying
-                    continue
-                # Fallback response if Gemini is totally down
-                return "LLM Service is currently overloaded. Please try again in a moment.", 0.0, 0.0
-
-    def get_comparative_predictions(self, query: str, context_results: list):
+    def predict_priority(self, query: str, brand: str, sources: list[SearchResult]):
         """
-        Generates RAG Answer, Non-RAG Answer, and Zero-Shot Priority.
+        Predicts priority using RAG context and Structured Outputs.
         """
-        # 1. Prepare RAG Context (Fix: Use dictionary keys)
-        context_str = "\n".join([
-            f"- Past Case: {res.get('text', 'N/A')} | Priority: {res.get('metadata', {}).get('priority', 'N/A')}" 
-            for res in context_results
+        # 1. Format context from SearchResult Pydantic objects
+        context_str = "\n--(--\n".join([
+            f"ID: {s.tweet_id} | Brand: {s.target_brand} | "
+            f"Priority: {s.priority} | Content: {s.text}"
+            for s in sources
         ])
 
-        # 2. Generate RAG Answer
-        rag_prompt = f"Use this context to answer: {context_str}\n\nQuestion: {query}"
-        rag_ans, rag_lat, rag_cost = self._call_gemini(rag_prompt)
+        # 2. Build the User Prompt
+        user_prompt = USER_PROMPT_TEMPLATE.format(
+            brand=brand,
+            query=query,
+            context=context_str
+        )
 
-        # 3. Generate Non-RAG Answer
-        non_rag_prompt = f"Answer this question based on your general knowledge: {query}"
-        nr_ans, nr_lat, nr_cost = self._call_gemini(non_rag_prompt)
-
-        # 4. Zero-Shot Priority
-        priority_prompt = f"Is this support ticket High Priority (1) or Low Priority (0)? Ticket: {query}. Return ONLY the number."
-        p_raw, p_lat, p_cost = self._call_gemini(priority_prompt)
-        
         try:
-            llm_priority = int(''.join(filter(str.isdigit, p_raw)))
-        except:
-            llm_priority = 1 if "high" in p_raw.lower() else 0
+            # 3. Call Gemini with Structured Output
+            response = self.client.models.generate_content(
+                model=settings.LLM_MODEL,
+                config={
+                    'system_instruction': GROUNDED_SYSTEM_PROMPT,
+                    'response_mime_type': 'application/json',
+                    'response_schema': PriorityPrediction, # Tell Gemini to return this object!
+                    'temperature': 0.1
+                },
+                contents=user_prompt
+            )
+            
+            # 4. Use .parsed for a native Pydantic object (No manual JSON parsing!)
+            prediction: PriorityPrediction = response.parsed
+            return {
+                "priority": prediction.priority,
+                "answer": prediction.reasoning
+            }
+        except Exception as e:
+            logger.error(f"LLM Prediction Error: {e}")
+            return {"priority": 1, "answer": "Fallback: LLM failed to generate structured response."}
 
+    def get_comparative_predictions(self, query: str, sources: list[SearchResult]):
+        """
+        Requirement 3: Compare RAG vs. Non-RAG quality for evaluation.
+        """
+        context_str = "\n".join([f"- {s.text}" for s in sources])
+        
+        # RAG Version
+        rag_ans = self.client.models.generate_content(
+            model=settings.LLM_MODEL,
+            contents=f"Using this context: {context_str}\n\nQuestion: {query}"
+        )
+        
+        # Non-RAG Version
+        non_rag_ans = self.client.models.generate_content(
+            model=settings.LLM_MODEL,
+            contents=f"Answer this support ticket based on general knowledge: {query}"
+        )
+        
         return {
-            "rag": {"answer": rag_ans, "latency": rag_lat, "cost": rag_cost},
-            "non_rag": {"answer": nr_ans, "latency": nr_lat, "cost": nr_cost},
-            "llm_priority": {"label": llm_priority, "latency": p_lat, "cost": p_cost}
+            "rag_answer": rag_ans.text,
+            "non_rag_answer": non_rag_ans.text
+        }
+    
+    # Add this method to the LLMService class in backend/services/llm_service.py
+    def predict_zero_shot(self, query: str):
+        """Step 5: LLM zero-shot priority prediction (No RAG context)."""
+        prompt = f"Is this support ticket High Priority (2), Medium Priority (1), or Low Priority (0)? Ticket: {query}"
+        
+        start_time = time.time()
+        response = self.client.models.generate_content(
+            model=settings.LLM_MODEL,
+            config={
+                'system_instruction': "You are a support classifier. Decide the priority based ONLY on the text provided.",
+                'response_mime_type': 'application/json',
+                'response_schema': PriorityPrediction,
+                'temperature': 0.1
+            },
+            contents=prompt
+        )
+        latency = (time.time() - start_time) * 1000
+        prediction: PriorityPrediction = response.parsed
+        
+        return {
+            "priority": prediction.priority,
+            "reasoning": prediction.reasoning,
+            "latency_ms": round(latency, 2),
+            "cost_usd": 0.00001 # Approx cost for 1.5-flash
         }
 
 llm_service = LLMService()

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Decision Intelligence Assistant Presentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #2b3339;
+            --bg-alt: #323c41;
+            --fg: #d3c6aa;
+            --sage: #a7c080;
+            --yellow: #dbbc7f;
+            --border: #414b50;
+            --red: #e67e80;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--fg);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+        }
+        .slide {
+            height: 100vh;
+            width: 100vw;
+            display: none;
+            padding: 4rem;
+            box-sizing: border-box;
+            position: relative;
+        }
+        .slide.active {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        h1, h2 {
+            color: var(--sage);
+            font-weight: 700;
+        }
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+        .card {
+            background: var(--bg-alt);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-top: 1.5rem;
+        }
+        .image-box {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #1e2326;
+            margin-top: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .image-box img {
+            max-width: 100%;
+            max-height: 400px;
+            object-fit: contain;
+        }
+        .controls {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            display: flex;
+            gap: 1rem;
+            z-index: 100;
+        }
+        .btn {
+            background: var(--bg-alt);
+            border: 1px solid var(--border);
+            color: var(--sage);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            background: var(--sage);
+            color: var(--bg);
+        }
+        .progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 4px;
+            background: var(--sage);
+            transition: width 0.3s;
+        }
+        .accent-text { color: var(--yellow); }
+        .red-text { color: var(--red); }
+    </style>
+</head>
+<body>
+    <div class="progress" id="progress"></div>
+
+    <div class="slide active">
+        <h1 class="text-7xl mb-4">🧠 Decision Intelligence Assistant</h1>
+        <p class="text-3xl accent-text">Beyond the LLM: Engineering Speed, Cost, and Accuracy</p>
+        <div class="mt-12 text-xl opacity-60">Charbel Ghanem | AI Engineering Week 3</div>
+    </div>
+
+    <div class="slide">
+        <h2 class="text-5xl mb-8">The Data Challenge</h2>
+        <div class="grid grid-cols-2 gap-8">
+            <div class="card">
+                <h3 class="text-2xl mb-4">Twitter Customer Support</h3>
+                <p class="text-lg">Working with 2.8M real support conversations.</p>
+                <ul class="list-disc list-inside mt-4 space-y-2 opacity-80">
+                    <li>Noisy, real-world language.</li>
+                    <li>Unlabeled for priority.</li>
+                    <li>Requirement: Define a "Weak Supervision" rule.</li>
+                </ul>
+            </div>
+            <div class="image-box">
+                <img src="../graphs/priority_distribution.png" alt="Dataset Distribution">
+            </div>
+        </div>
+    </div>
+
+    <div class="slide">
+        <h2 class="text-5xl mb-8">The Reflex: ML Baseline</h2>
+        <div class="grid grid-cols-2 gap-8">
+            <div class="card">
+                <h3 class="text-2xl mb-4">Statistical Classifiers</h3>
+                <p>Is the model learning <span class="accent-text">Urgency</span> or just my <span class="red-text">Regex</span>?</p>
+                <div class="mt-8 text-4xl font-bold text-sage">Accuracy: 88%</div>
+                <p class="mt-4 opacity-60 italic">Features: Text length, brand sector, author ID.</p>
+            </div>
+            <div class="image-box">
+                <img src="../graphs/cm_logisticregression.png" alt="Confusion Matrix">
+            </div>
+        </div>
+    </div>
+
+    <div class="slide">
+        <h2 class="text-5xl mb-8">The Memory: RAG Engine</h2>
+        <div class="card">
+            <h3 class="text-2xl mb-4">Local Semantic Search</h3>
+            <p>Using <span class="accent-text">ChromaDB</span> + Local <span class="code-font">text-embedding-004</span>[cite: 21, 28].</p>
+            <div class="image-box mt-6">
+                <pre class="code-font text-sage text-sm text-left">
+query_vector = embedder.embed_text(query)
+results = ticket_store.search(query_vector, top_k=3)
+# Retrieved Context: Twitter History → Gemini
+                </pre>
+            </div>
+            <p class="mt-6">Fulfilling the "Knowledge Assistant" requirement with a source panel.</p>
+        </div>
+    </div>
+
+    <div class="slide">
+        <h2 class="text-5xl mb-8">The Master Orchestrator</h2>
+        <div class="card">
+            <h3 class="text-2xl mb-4">FastAPI & Python 3.12</h3>
+            <p>The <span class="code-font">/api/predict</span> endpoint acts as the brain, running 4 systems in parallel.</p>
+            <ul class="grid grid-cols-2 gap-4 mt-6">
+                <li class="p-4 bg-black/20 rounded">1. RAG Answer (Contextual)</li>
+                <li class="p-4 bg-black/20 rounded">2. Non-RAG (Zero-Shot)</li>
+                <li class="p-4 bg-black/20 rounded">3. ML Label (Statistical)</li>
+                <li class="p-4 bg-black/20 rounded">4. LLM Label (Zero-Shot)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="slide">
+        <h2 class="text-5xl mb-8">Cost vs. Latency Tradeoff</h2>
+        <div class="card">
+            <h3 class="text-2xl mb-4 text-yellow-200 text-center">The core exercise of the project</h3>
+            <table class="w-full text-left mt-8">
+                <tr class="border-b border-border">
+                    <th class="py-4">System</th>
+                    <th class="py-4">Latency</th>
+                    <th class="py-4">Cost</th>
+                    <th class="py-4">Defense</th>
+                </tr>
+                <tr>
+                    <td class="py-4 font-bold">ML Baseline</td>
+                    <td class="py-4 text-sage">~4.17ms</td>
+                    <td class="py-4">$0.00</td>
+                    <td class="py-4 opacity-70">High-volume screening </td>
+                </tr>
+                <tr>
+                    <td class="py-4 font-bold">LLM (Flash)</td>
+                    <td class="py-4 text-red-400">>3,000ms</td>
+                    <td class="py-4 red-text">$0.0001</td>
+                    <td class="py-4 opacity-70">High-quality nuance </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="slide">
+        <h2 class="text-5xl mb-8">The React Frontend</h2>
+        <div class="grid grid-cols-2 gap-8">
+            <div class="image-box">
+                <img src="../frontend/src/assets/hero.png" alt="Dashboard Preview">
+            </div>
+            <div class="card">
+                <h3 class="text-2xl mb-4">Features</h3>
+                <ul class="list-disc list-inside space-y-4">
+                    <li>Source Panel for RAG inspection.</li>
+                    <li>Side-by-side 4-way comparison.</li>
+                    <li>Interaction History & Logging.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide text-center">
+        <h2 class="text-7xl mb-8">Live Demo</h2>
+        <p class="text-3xl accent-text">Running the Decision Intelligence Orchestrator...</p>
+    </div>
+
+    <div class="slide">
+        <h2 class="text-5xl mb-8">Roadmap & Deployment</h2>
+        <div class="grid grid-cols-2 gap-8">
+            <div class="card">
+                <h3 class="text-2xl mb-4 text-sage">Deployment</h3>
+                <p>Full orchestration via <span class="accent-text">Docker Compose</span>.</p>
+                <p class="mt-4">Shared networks for Backend, Frontend, and Vector DB.</p>
+            </div>
+            <div class="card">
+                <h3 class="text-2xl mb-4 text-yellow-200">The Future</h3>
+                <ul class="list-disc list-inside space-y-2">
+                    <li>Multi-agent verification loop.</li>
+                    <li>Real-time fine-tuning from logs.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="slide text-center">
+        <h1 class="text-8xl mb-4">Thank You</h1>
+        <p class="mt-12 opacity-40">github.com/bmislol/decision-intelligence-assistant</p>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="prevSlide()">← Prev</button>
+        <button class="btn" onclick="nextSlide()">Next →</button>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const progress = document.getElementById('progress');
+
+        function showSlide(index) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (index + slides.length) % slides.length;
+            slides[currentSlide].classList.add('active');
+            progress.style.width = `${((currentSlide + 1) / slides.length) * 100}%`;
+        }
+
+        function nextSlide() { showSlide(currentSlide + 1); }
+        function prevSlide() { showSlide(currentSlide - 1); }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+            if (e.key === 'ArrowLeft') prevSlide();
+        });
+    </script>
+</body>
+</html>

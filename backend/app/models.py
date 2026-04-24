@@ -56,3 +56,39 @@ class SystemLog(BaseModel):
     source: str                         # e.g., "ML_MODEL", "CHROMA_DB"
     message: str
     metadata: Optional[Dict[str, Any]] = None
+
+class PriorityPrediction(BaseModel):
+    """The structured output we want from the LLM"""
+    priority: int = Field(description="The predicted priority: 0 (Low), 1 (Medium), or 2 (High)")
+    reasoning: str = Field(description="A brief explanation of why this priority was chosen")
+
+class RAGResponse(BaseModel):
+    answer: str
+    sources: List[SearchResult]
+    latency_ms: float
+    cost_usd: float
+
+class MLResponse(BaseModel):
+    priority: int
+    latency_ms: float
+    cost_usd: float = 0.0  # Always zero for local ML
+
+class ZeroShotResponse(BaseModel):
+    priority: int
+    reasoning: str
+    latency_ms: float
+    cost_usd: float
+
+# Add these to backend/app/models.py
+class LLMOnlyResponse(BaseModel):
+    answer: str
+    latency_ms: float
+    cost_usd: float
+
+class MasterResponse(BaseModel):
+    query: str
+    rag: RAGResponse
+    llm_only: LLMOnlyResponse
+    ml: MLResponse
+    zero_shot: ZeroShotResponse
+    total_latency_ms: float
