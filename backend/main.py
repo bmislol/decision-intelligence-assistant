@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from services.ml_service import MLService
-from app.routers import search, keyword, ai # Import your new router
+from app.routers import search, keyword, ai, admin # Import your new router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,10 +25,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi import BackgroundTasks
+import subprocess
+
+@app.post("/api/admin/run-evaluate")
+async def trigger_evaluate(background_tasks: BackgroundTasks):
+    # Runs the script in the background so the API doesn't hang
+    background_tasks.add_task(subprocess.run, ["python", "scripts/evaluate.py"])
+    return {"status": "Evaluation started in background"}
+
 # Register all routers
 app.include_router(search.router, prefix="/api")
 app.include_router(keyword.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
+app.include_router(admin, prefix="/api")
 
 @app.get("/")
 def root():

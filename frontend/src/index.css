@@ -50,8 +50,14 @@
   }
 }
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Add the base Everforest background so you don't see white flashes */
 body {
-  margin: 0;
+  background-color: #2b3339;
+  color: #d3c6aa;
 }
 
 #root {
