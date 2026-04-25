@@ -1,0 +1,6 @@
+.venv
+__pycache__
+node_modules
+.git
+data/chroma_db
+logs/*.jsonl
